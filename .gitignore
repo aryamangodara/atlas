@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# POC runtime artifacts
+results/
+uploads/
+data/*.tif
+data/*.tiff
+
+# Claude Code local settings
+.claude/settings.local.json

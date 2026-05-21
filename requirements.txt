@@ -1,0 +1,12 @@
+# AeroAtlas POC — NDVI crop-stress intelligence API
+# Unpinned on purpose: grab the newest wheels compatible with your Python (3.14).
+fastapi
+uvicorn
+python-multipart
+rasterio
+numpy
+shapely
+pillow
+pydantic
+pytest
+httpx
