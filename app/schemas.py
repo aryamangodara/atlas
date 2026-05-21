@@ -21,6 +21,14 @@ class StressZone(BaseModel):
     area_pixels: int
 
 
+class CropSegmentation(BaseModel):
+    model_version: str = Field(..., description="Provenance of the segmentation model/backend")
+    backend: str = Field(..., description="Backend class that produced the mask")
+    classes: Dict[int, str] = Field(..., description="Class id -> name for classes present in the scene")
+    coverage_pct: Dict[str, float] = Field(..., description="Percent of valid area per class")
+    mask_url: str = Field(..., description="URL of the class-coloured mask PNG")
+
+
 class AnalyzeResponse(BaseModel):
     flight_id: str
     metrics: Metrics
@@ -28,3 +36,6 @@ class AnalyzeResponse(BaseModel):
     overlay_url: str
     model_version: str
     crs: Optional[str] = Field(None, description="Source coordinate reference system")
+    segmentation: Optional[CropSegmentation] = Field(
+        None, description="Crop-mask segmentation (alongside NDVI); omitted if disabled/unavailable"
+    )

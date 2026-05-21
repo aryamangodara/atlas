@@ -33,3 +33,25 @@ MIN_ZONE_PIXELS = 25   # drop speckle smaller than this
 # Present in every response from day zero (Principle 2), even though v0 is pure
 # deterministic math, so the client contract never breaks when models arrive.
 MODEL_VERSION = "ndvi-deterministic-v0"
+
+# --- Segmentation (crop-mask) backend --------------------------------------
+# The segmentation layer is pluggable (see app/segmentation.py):
+#   * SEGFORMER_CHECKPOINT empty -> deterministic NDVI-heuristic fallback (runs today)
+#   * SEGFORMER_CHECKPOINT set    -> real SegFormer via transformers, IF torch is installed
+#     ("nvidia/segformer-b0-finetuned-ade-512-512" smoke-tests the plumbing; a
+#      fine-tuned crop checkpoint drops in once labeled Indian data exists, Month 1-3).
+ENABLE_SEGMENTATION = True
+SEGFORMER_CHECKPOINT = ""
+GREEN_BAND = 2
+BLUE_BAND = 1
+
+# Tiled inference: orthomosaics are too large for a single forward pass.
+TILE_SIZE = 512
+TILE_OVERLAP = 64
+
+# Colours for the heuristic fallback's classes (RGB); SegFormer uses an auto palette.
+SEG_CLASS_COLORS = {
+    0: (150, 110, 70),    # non_crop  (bare soil / water / built)
+    1: (140, 200, 120),   # crop      (vegetation)
+    2: (35, 132, 67),     # dense_canopy
+}

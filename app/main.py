@@ -1,11 +1,12 @@
 """AeroAtlas POC — FastAPI service.
 
-POST /v1/analyze : multispectral GeoTIFF in -> crop-stress intelligence JSON out.
+POST /v1/analyze : multispectral GeoTIFF in -> crop-stress + crop-mask JSON out.
 GET  /           : minimal browser demo (upload form).
 GET  /results/...: serves generated overlay PNGs.
 """
 from __future__ import annotations
 
+import logging
 import shutil
 import uuid
 
@@ -15,13 +16,16 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .ndvi import analyze_geotiff
-from .overlay import render_ndvi_overlay
-from .schemas import AnalyzeResponse, Metrics, StressZone
+from .overlay import render_ndvi_overlay, render_segmentation_overlay
+from .schemas import AnalyzeResponse, CropSegmentation, Metrics, StressZone
+from .segmentation import segment_raster
+
+logger = logging.getLogger("aeroatlas.api")
 
 config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 config.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="AeroAtlas POC — NDVI Crop-Stress API", version="0.1.0")
+app = FastAPI(title="AeroAtlas POC — NDVI Crop-Stress API", version="0.2.0")
 app.mount("/results", StaticFiles(directory=str(config.RESULTS_DIR)), name="results")
 
 
@@ -52,6 +56,25 @@ async def analyze(
     overlay_path = config.RESULTS_DIR / fid / "ndvi_overlay.png"
     render_ndvi_overlay(result.ndvi, result.valid_mask, overlay_path)
 
+    # Crop-mask segmentation runs alongside NDVI (best-effort — its failure must
+    # never sink the NDVI product). Backend is pluggable; see app/segmentation.py.
+    segmentation = None
+    if config.ENABLE_SEGMENTATION:
+        try:
+            seg = segment_raster(upload_path, red_band=red_band, nir_band=nir_band)
+            seg_mask_path = config.RESULTS_DIR / fid / "segmentation.png"
+            seg_colors = config.SEG_CLASS_COLORS if seg.backend == "VegetationMaskBackend" else None
+            render_segmentation_overlay(seg.labels, seg_mask_path, colors=seg_colors)
+            segmentation = CropSegmentation(
+                model_version=seg.model_version,
+                backend=seg.backend,
+                classes=seg.classes,
+                coverage_pct=seg.coverage_pct,
+                mask_url=f"/results/{fid}/segmentation.png",
+            )
+        except Exception as exc:
+            logger.warning("segmentation failed for %s: %s", fid, exc)
+
     return AnalyzeResponse(
         flight_id=fid,
         metrics=Metrics(
@@ -65,6 +88,7 @@ async def analyze(
         overlay_url=f"/results/{fid}/ndvi_overlay.png",
         model_version=config.MODEL_VERSION,
         crs=result.crs,
+        segmentation=segmentation,
     )
 
 
@@ -78,22 +102,23 @@ _INDEX_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AeroAtlas POC - NDVI Crop-Stress</title>
+<title>AeroAtlas POC - Crop Intelligence</title>
 <style>
-  body{font-family:system-ui,sans-serif;max-width:860px;margin:2rem auto;padding:0 1rem;color:#1a1a1a}
+  body{font-family:system-ui,sans-serif;max-width:880px;margin:2rem auto;padding:0 1rem;color:#1a1a1a}
   h1{font-size:1.4rem;margin-bottom:.2rem} .sub{color:#666;margin-top:0}
   form{margin:1.5rem 0;padding:1rem;border:1px solid #ddd;border-radius:8px}
   button{background:#0a7d3f;color:#fff;border:0;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:1rem}
   .row{display:flex;gap:1.5rem;flex-wrap:wrap;margin-top:1rem;align-items:flex-start}
   pre{background:#0f172a;color:#e2e8f0;padding:1rem;border-radius:8px;overflow:auto;flex:1;min-width:320px;font-size:.8rem}
-  img{max-width:360px;border:1px solid #ccc;border-radius:8px}
+  img{max-width:340px;border:1px solid #ccc;border-radius:8px}
   label{font-size:.8rem;color:#444;display:block;margin:.4rem 0 .1rem}
   input[type=number]{width:5rem}
+  .imgs{display:flex;flex-direction:column;gap:.5rem}
 </style>
 </head>
 <body>
-  <h1>AeroAtlas - NDVI Crop-Stress (POC)</h1>
-  <p class="sub">Upload a multispectral GeoTIFF, get crop-stress intelligence + an overlay. Deterministic NDVI, no model.</p>
+  <h1>AeroAtlas - Crop Intelligence (POC)</h1>
+  <p class="sub">Upload a multispectral GeoTIFF, get crop-stress intelligence (NDVI) + a crop-mask segmentation. Pluggable model backend.</p>
   <form id="f">
     <input type="file" name="file" accept=".tif,.tiff" required>
     <div class="row">
@@ -105,18 +130,23 @@ _INDEX_HTML = """<!doctype html>
   </form>
   <div class="row">
     <pre id="out">Awaiting upload...</pre>
-    <div><img id="overlay" alt="" style="display:none"></div>
+    <div class="imgs">
+      <img id="overlay" alt="NDVI overlay" style="display:none">
+      <img id="seg" alt="crop mask" style="display:none">
+    </div>
   </div>
 <script>
 const f=document.getElementById('f'),out=document.getElementById('out'),
-      img=document.getElementById('overlay'),st=document.getElementById('status');
+      img=document.getElementById('overlay'),seg=document.getElementById('seg'),
+      st=document.getElementById('status');
 f.addEventListener('submit',async e=>{
-  e.preventDefault();st.textContent='analyzing...';img.style.display='none';
+  e.preventDefault();st.textContent='analyzing...';img.style.display='none';seg.style.display='none';
   try{
     const r=await fetch('/v1/analyze',{method:'POST',body:new FormData(f)});
     const j=await r.json();
     out.textContent=JSON.stringify(j,null,2);
     if(r.ok && j.overlay_url){img.src=j.overlay_url+'?t='+Date.now();img.style.display='block';}
+    if(r.ok && j.segmentation && j.segmentation.mask_url){seg.src=j.segmentation.mask_url+'?t='+Date.now();seg.style.display='block';}
     st.textContent=r.ok?'done':('error '+r.status);
   }catch(err){out.textContent=String(err);st.textContent='failed';}
 });

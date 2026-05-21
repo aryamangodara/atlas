@@ -53,3 +53,31 @@ def render_ndvi_overlay(
 
     Image.fromarray(rgba, mode="RGBA").save(out_path)
     return out_path
+
+
+# Auto palette for class masks (used when no explicit colours are supplied)
+_CLASS_PALETTE = [
+    (150, 110, 70), (140, 200, 120), (35, 132, 67), (31, 119, 180),
+    (255, 127, 14), (44, 160, 44), (214, 39, 40), (148, 103, 189),
+    (140, 86, 75), (227, 119, 194),
+]
+
+
+def render_segmentation_overlay(labels: np.ndarray, out_path, colors=None) -> Path:
+    """Write a class-coloured PNG from an integer label mask.
+
+    Pixels with label < 0 (nodata) are fully transparent. ``colors`` optionally
+    maps class id -> (r, g, b); otherwise a deterministic palette is used.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    colors = colors or {}
+
+    present = [int(c) for c in np.unique(labels) if c >= 0]
+    rgba = np.zeros(labels.shape + (4,), dtype="uint8")
+    for k, cid in enumerate(sorted(present)):
+        col = colors.get(cid, _CLASS_PALETTE[k % len(_CLASS_PALETTE)])
+        m = labels == cid
+        rgba[m, 0], rgba[m, 1], rgba[m, 2], rgba[m, 3] = col[0], col[1], col[2], 255
+    Image.fromarray(rgba, mode="RGBA").save(out_path)
+    return out_path

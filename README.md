@@ -1,10 +1,11 @@
-# AeroAtlas POC — NDVI Crop-Stress API
+# AeroAtlas POC — Crop Intelligence API (NDVI + segmentation)
 
 The fastest slice of the [architecture plan](ARCHITECTURE_PLAN.md) (§13): prove
 *raw multispectral imagery in → refined crop-stress intelligence out, via an API*.
 
-**Deterministic NDVI — no ML model, no GPU, no training data.** This is the
-"intelligence needs no model" insight from Principle 6: NDVI is band arithmetic.
+**NDVI runs as deterministic math — no ML model, no GPU, no training data** (Principle 6:
+NDVI is band arithmetic). A *pluggable* crop-mask segmentation layer runs alongside it,
+defaulting to a heuristic backend so the core stays dependency-light.
 
 ## What it does
 `POST /v1/analyze` with a multispectral GeoTIFF returns:
@@ -17,10 +18,17 @@ The fastest slice of the [architecture plan](ARCHITECTURE_PLAN.md) (§13): prove
   ],
   "overlay_url": "/results/flight-ab12cd34/ndvi_overlay.png",
   "model_version": "ndvi-deterministic-v0",
-  "crs": "EPSG:32643"
+  "crs": "EPSG:32643",
+  "segmentation": {
+    "backend": "VegetationMaskBackend",
+    "model_version": "vegmask-ndvi-heuristic-v0",
+    "classes": { "0": "non_crop", "1": "crop", "2": "dense_canopy" },
+    "coverage_pct": { "non_crop": 1.5, "crop": 4.5, "dense_canopy": 94.0 },
+    "mask_url": "/results/flight-ab12cd34/segmentation.png"
+  }
 }
 ```
-…plus a colour-coded NDVI overlay PNG (red = stressed, green = healthy).
+…plus a colour-coded NDVI overlay PNG (red = stressed, green = healthy) and a class-coloured crop-mask PNG.
 
 ## Quick start (Windows / PowerShell)
 ```powershell
@@ -49,10 +57,16 @@ Override per request: `-F red_band=3 -F nir_band=4 -F stress_threshold=0.30`.
 pytest -q
 ```
 
+## Crop-mask segmentation (pluggable)
+A `segmentation` section runs alongside NDVI. The backend is pluggable: by default a
+deterministic NDVI-heuristic classifier (no ML deps); set `SEGFORMER_CHECKPOINT` in
+`app/config.py` and `pip install -r requirements-ml.txt` (torch + transformers) to
+activate a real SegFormer. A fine-tuned crop checkpoint drops into the same slot later.
+
 ## Deliberately out of scope (see §13 "POC → MVP path")
-OpenDroneMap / SfM, async jobs + webhooks, S3, multi-tenancy / auth, billing —
-all deferred. The next step is the first fine-tuned **SegFormer** crop mask
-running alongside NDVI.
+OpenDroneMap / SfM, async jobs + webhooks, S3, multi-tenancy / auth, billing — all
+deferred. The next modeling step is a SegFormer **fine-tuned on labeled Indian crop
+data** (Month 1–3), which replaces the checkpoint behind the same contract.
 
 ## How this maps to the target architecture
 | POC file | Target home | Layer |

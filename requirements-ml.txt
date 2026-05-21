@@ -1,0 +1,12 @@
+# Optional ML extras — enable the real SegFormer segmentation backend.
+#
+#   pip install -r requirements-ml.txt
+#
+# Then set SEGFORMER_CHECKPOINT in app/config.py, e.g.:
+#   "nvidia/segformer-b0-finetuned-ade-512-512"  (smoke-test the plumbing), or
+#   a fine-tuned crop checkpoint once labeled Indian data exists (Month 1-3).
+#
+# Without these, app/segmentation.py uses the deterministic NDVI-heuristic
+# fallback and the API still works.
+torch
+transformers
