@@ -23,7 +23,8 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1            # bash: source .venv/Scripts/activate
 pip install -r requirements.txt
 
-python scripts\make_sample.py data\sample_field.tif   # synthetic test GeoTIFF
+python scripts\make_sample.py data\sample_field.tif   # synthetic test GeoTIFF (offline)
+python scripts\fetch_sample.py --out data\s2.tif       # real Sentinel-2 clip (needs internet, no API key)
 uvicorn app.main:app --reload                          # serve API + demo page at http://127.0.0.1:8000/
 pytest -q                                              # full suite
 pytest tests/test_ndvi.py::test_compute_ndvi_basic     # single test
@@ -49,5 +50,5 @@ Manual endpoint check: `curl.exe -X POST http://127.0.0.1:8000/v1/analyze -F "fi
 - **Enabling the real SegFormer backend:** `pip install -r requirements-ml.txt` (torch + transformers), then set `SEGFORMER_CHECKPOINT` in `app/config.py`. The factory in `app/segmentation.py` falls back to the heuristic backend if torch/the checkpoint are unavailable, so the API never hard-depends on torch.
 - **Band layout assumption:** defaults are a Micasense-style 5-band stack `1=Blue 2=Green 3=Red 4=NIR 5=RedEdge`. Callers override per request via the `red_band` / `nir_band` / `stress_threshold` form fields.
 - **`conftest.py` at the repo root** exists solely to put the root on `sys.path` so `import app` / `import scripts` resolve under pytest.
-- **`scripts/make_sample.py`** generates a *seeded* (rng=42) synthetic field — healthy base plus one medium and one high stress patch — so `/v1/analyze` yields a recognisable result (≈0.66 mean NDVI, ≈6% stressed, 2 zones) with no real data on hand. `tests/test_api.py` uses FastAPI's `TestClient` (requires `httpx`).
+- **Two ways to get test input.** `scripts/make_sample.py` generates a *seeded* (rng=42) synthetic field — healthy base plus one medium and one high stress patch — so `/v1/analyze` yields a recognisable result (≈0.66 mean NDVI, ≈6% stressed, 2 zones) offline. `scripts/fetch_sample.py` downloads a real low-cloud Sentinel-2 L2A clip over any lat/lon (default: Punjab) from the public Earth Search STAC + AWS open COGs (no API key) and stacks Blue/Green/Red/NIR so it uploads with the default bands. `tests/test_api.py` uses FastAPI's `TestClient` (requires `httpx`).
 - **`results/`, `uploads/`, and `data/*.tif` are gitignored** runtime artifacts.
