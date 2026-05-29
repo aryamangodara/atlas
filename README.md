@@ -48,6 +48,17 @@ curl.exe -X POST http://127.0.0.1:8000/v1/analyze -F "file=@data/sample_field.ti
 ```
 macOS/Linux: `source .venv/bin/activate` and use forward slashes.
 
+## Test data
+- **Synthetic (offline, instant):** `python scripts\make_sample.py data\sample_field.tif`
+- **Real Sentinel-2 over an Indian farm (needs internet, no API key):**
+  ```powershell
+  python scripts\fetch_sample.py --out data\sentinel_sample.tif       # default: Punjab
+  python scripts\fetch_sample.py --lat 17.4 --lon 78.5 --max-cloud 5   # anywhere
+  ```
+  Pulls a low-cloud clip from the public Earth Search STAC + AWS open COGs and
+  stacks Blue/Green/Red/NIR, so it uploads with the default bands. Ordinary RGB
+  photos won't work — NDVI needs a near-infrared band.
+
 ## Band layout
 Defaults assume a Micasense-style 5-band stack: `1=Blue 2=Green 3=Red 4=NIR 5=RedEdge`.
 Override per request: `-F red_band=3 -F nir_band=4 -F stress_threshold=0.30`.
